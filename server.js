@@ -1,5 +1,5 @@
 // =================================================================
-//  FINAL 'server.js' -- COPY AND PASTE THIS ENTIRE CODE
+//  UPDATED 'server.js' WITH RESULT FILTERING
 // =================================================================
 
 const express = require('express');
@@ -11,39 +11,23 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 10000;
 
-// --- MIDDLEWARE ---
-// Use CORS to allow requests from any origin. This is important for web apps.
 app.use(cors());
-// Use Express's built-in middleware to serve static files like index.html, css, etc.
-// This tells Express that your main directory contains the files for the website.
 app.use(express.static(path.join(__dirname)));
-
-// Set up Multer for handling image uploads in memory
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- ROUTES ---
-
-// **ROUTE 1: Serve the main webpage**
-// When a user goes to "your-site.com/", send them the index.html file.
-// This fixes the "Cannot GET /" error.
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// **ROUTE 2: Handle the image identification**
-// This is the API endpoint that the website's JavaScript will call.
-// It listens for POST requests at "your-site.com/identify"
 app.post('/identify', upload.single('image'), async (req, res) => {
   console.log('LOG: Received a request at /identify');
 
-  // Check for the API key
   const apiKey = process.env.SERPAPI_API_KEY;
   if (!apiKey) {
     console.error('ERROR: SERPAPI_API_KEY is not set on the server.');
     return res.status(500).json({ error: 'Server configuration error: Missing API Key.' });
   }
 
-  // Check that a file was actually sent
   if (!req.file) {
     console.warn('WARN: Request to /identify made without an image file.');
     return res.status(400).json({ error: 'No image file was uploaded.' });
@@ -58,11 +42,27 @@ app.post('/identify', upload.single('image'), async (req, res) => {
       url: `data:image/jpeg;base64,${req.file.buffer.toString('base64')}`,
     };
 
-    // Make the call to the external API
     const searchResults = await search.json(params);
-
     console.log('LOG: Successfully received response from SerpAPI.');
-    res.json(searchResults); // Send the full results back to the frontend
+
+    // --- NEW FILTERING LOGIC ---
+    // Get the array of visual matches, or an empty array if it doesn't exist.
+    const visualMatches = searchResults.visual_matches || [];
+
+    // Map over the matches to create a clean, new array.
+    // We'll take the top 5 results.
+    const formattedResults = visualMatches.slice(0, 5).map(match => ({
+      title: match.title,
+      link: match.link,
+      thumbnail: match.thumbnail,
+      source: match.source,
+    }));
+
+    console.log(`LOG: Filtered down to ${formattedResults.length} results.`);
+    
+    // Send our new, clean array back to the frontend.
+    res.json({ results: formattedResults });
+    // --- END OF NEW LOGIC ---
 
   } catch (error) {
     console.error('ERROR: An error occurred during the SerpAPI call:', error);
@@ -70,9 +70,6 @@ app.post('/identify', upload.single('image'), async (req, res) => {
   }
 });
 
-// --- START THE SERVER ---
 app.listen(port, () => {
   console.log(`Server started successfully. Listening on port ${port}.`);
-  console.log(`Main page is served from: ${path.join(__dirname, 'index.html')}`);
-  console.log('API endpoint is listening at: POST /identify');
 });
