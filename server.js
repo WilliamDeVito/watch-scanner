@@ -1,75 +1,62 @@
-// =================================================================
-//  UPDATED 'server.js' WITH RESULT FILTERING
-// =================================================================
-
 const express = require('express');
-const { SerpAPI } = require('google-search-results-nodejs');
-const multer = require('multer');
+// CORRECT: We import the getJson function directly.
+const { getJson } = require('serpapi');
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
-const port = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
+// Use CORS middleware to allow requests from your frontend
 app.use(cors());
-app.use(express.static(path.join(__dirname)));
-const upload = multer({ storage: multer.memoryStorage() });
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+// Middleware to parse large base64 image strings
+app.use(express.json({ limit: '10mb' }));
 
-app.post('/identify', upload.single('image'), async (req, res) => {
-  console.log('LOG: Received a request at /identify');
+// The main identification endpoint
+app.post('/identify', async (req, res) => {
+  const { image } = req.body; // Expects a base64 string
+
+  if (!image) {
+    return res.status(400).json({ error: 'No image data provided.' });
+  }
 
   const apiKey = process.env.SERPAPI_API_KEY;
   if (!apiKey) {
-    console.error('ERROR: SERPAPI_API_KEY is not set on the server.');
+    console.error('Server Error: SERPAPI_API_KEY is not defined.');
     return res.status(500).json({ error: 'Server configuration error: Missing API Key.' });
   }
 
-  if (!req.file) {
-    console.warn('WARN: Request to /identify made without an image file.');
-    return res.status(400).json({ error: 'No image file was uploaded.' });
-  }
-
-  console.log('LOG: Image file received. Preparing to call SerpAPI.');
-  const search = new SerpAPI(apiKey);
-
   try {
-    const params = {
-      engine: 'google_lens',
-      url: `data:image/jpeg;base64,${req.file.buffer.toString('base64')}`,
-    };
-
-    const searchResults = await search.json(params);
-    console.log('LOG: Successfully received response from SerpAPI.');
-
-    // --- NEW FILTERING LOGIC ---
-    // Get the array of visual matches, or an empty array if it doesn't exist.
-    const visualMatches = searchResults.visual_matches || [];
-
-    // Map over the matches to create a clean, new array.
-    // We'll take the top 5 results.
-    const formattedResults = visualMatches.slice(0, 5).map(match => ({
-      title: match.title,
-      link: match.link,
-      thumbnail: match.thumbnail,
-      source: match.source,
-    }));
-
-    console.log(`LOG: Filtered down to ${formattedResults.length} results.`);
+    console.log('Received image, sending to SerpAPI...');
     
-    // Send our new, clean array back to the frontend.
-    res.json({ results: formattedResults });
-    // --- END OF NEW LOGIC ---
+    // CORRECT: We call the getJson function with all parameters in an object.
+    // We are NOT using "new SerpAPI()".
+    const response = await getJson({
+      engine: 'google_lens',
+      url: image,
+      api_key: apiKey,
+    });
+
+    console.log('SerpAPI response successful.');
+    res.json(response);
 
   } catch (error) {
-    console.error('ERROR: An error occurred during the SerpAPI call:', error);
-    res.status(500).json({ error: 'Failed to perform the image search.', details: error.message });
+    // This block will catch any errors from the SerpAPI call
+    console.error('Error calling SerpAPI:', error);
+
+    // This sends a clean JSON error back to the browser
+    res.status(500).json({
+      error: 'Failed to get data from SerpAPI.',
+      details: error.message || 'An unknown error occurred.',
+    });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server started successfully. Listening on port ${port}.`);
+// A simple health check endpoint
+app.get('/', (req, res) => {
+  res.send('Watch Scanner server is running.');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server started successfully on port ${PORT}`);
 });
