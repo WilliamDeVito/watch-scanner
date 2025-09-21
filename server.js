@@ -52,6 +52,35 @@ app.post('/identify', async (req, res) => {
   }
 });
 
+// Add this new route to handle confirmations
+app.post('/send-to-automation', async (req, res) => {
+  try {
+    const { title, image, link, source } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ error: 'Watch title is required.' });
+    }
+    
+    console.log('Watch confirmed by user:', {
+      title,
+      image: image ? 'Image URL provided' : 'No image',
+      link: link || 'No link',
+      source: source || 'Unknown source'
+    });
+    
+    // This is where you would add code to send data to your automation
+    // For now, we'll just return success
+    
+    res.json({ success: true, message: 'Watch data received and processed.' });
+  } catch (error) {
+    console.error('Error in send-to-automation:', error);
+    res.status(500).json({
+      error: 'Failed to process watch data.',
+      details: error.message || 'An unknown error occurred.'
+    });
+  }
+});
+
 // A simple health check endpoint
 app.get('/', (req, res) => {
   res.send('Watch Scanner server is running.');
