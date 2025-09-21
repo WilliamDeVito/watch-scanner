@@ -1,91 +1,68 @@
 const express = require('express');
-// CORRECT: We import the getJson function directly.
-const { getJson } = require('serpapi');
+const axios = require('axios');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
-// Use CORS middleware to allow requests from your frontend
+// Your SerpAPI key - you'll need to replace this with your actual key
+const SERPAPI_KEY = '1d6816078f96f61fd7d5d3847974dbcf1d5aafc074eaddf74ad10654a8179850';
+
+// Middleware
 app.use(cors());
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// Middleware to parse large base64 image strings
-app.use(express.json({ limit: '10mb' }));
-
-// The main identification endpoint
-app.post('/identify', async (req, res) => {
-  const { image } = req.body; // Expects a base64 string
-
-  if (!image) {
-    return res.status(400).json({ error: 'No image data provided.' });
-  }
-
-  const apiKey = process.env.SERPAPI_API_KEY;
-  if (!apiKey) {
-    console.error('Server Error: SERPAPI_API_KEY is not defined.');
-    return res.status(500).json({ error: 'Server configuration error: Missing API Key.' });
-  }
-
-  try {
-    console.log('Received image, sending to SerpAPI...');
-    
-    // CORRECT: We call the getJson function with all parameters in an object.
-    // We are NOT using "new SerpAPI()".
-    const response = await getJson({
-      engine: 'google_lens',
-      url: image,
-      api_key: apiKey,
-    });
-
-    console.log('SerpAPI response successful.');
-    res.json(response);
-
-  } catch (error) {
-    // This block will catch any errors from the SerpAPI call
-    console.error('Error calling SerpAPI:', error);
-
-    // This sends a clean JSON error back to the browser
-    res.status(500).json({
-      error: 'Failed to get data from SerpAPI.',
-      details: error.message || 'An unknown error occurred.',
-    });
-  }
-});
-
-// Add this new route to handle confirmations
-app.post('/send-to-automation', async (req, res) => {
-  try {
-    const { title, image, link, source } = req.body;
-    
-    if (!title) {
-      return res.status(400).json({ error: 'Watch title is required.' });
-    }
-    
-    console.log('Watch confirmed by user:', {
-      title,
-      image: image ? 'Image URL provided' : 'No image',
-      link: link || 'No link',
-      source: source || 'Unknown source'
-    });
-    
-    // This is where you would add code to send data to your automation
-    // For now, we'll just return success
-    
-    res.json({ success: true, message: 'Watch data received and processed.' });
-  } catch (error) {
-    console.error('Error in send-to-automation:', error);
-    res.status(500).json({
-      error: 'Failed to process watch data.',
-      details: error.message || 'An unknown error occurred.'
-    });
-  }
-});
-
-// A simple health check endpoint
+// Basic route
 app.get('/', (req, res) => {
   res.send('Watch Scanner server is running.');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server started successfully on port ${PORT}`);
+// Watch identification endpoint
+app.post('/identify', async (req, res) => {
+  try {
+    // Get image data from request
+    const { image } = req.body;
+    
+    if (!image) {
+      return res.status(400).json({ error: 'No image provided' });
+    }
+    
+    // Extract base64 data (remove the prefix if it exists)
+    let base64Image = image;
+    if (image.includes(',')) {
+      base64Image = image.split(',')[1];
+    }
+    
+    console.log('Received image for identification');
+    
+    // Make request to SerpAPI
+    const response = await axios.post('https://serpapi.com/search', {
+      engine: 'google_lens',
+      api_key: 1d6816078f96f61fd7d5d3847974dbcf1d5aafc074eaddf74ad10654a8179850,
+      image_data: base64Image
+    });
+    
+    console.log('Received response from SerpAPI');
+    
+    // Return the results
+    return res.json({
+      success: true,
+      visual_matches: response.data.visual_matches || [],
+      knowledge_graph: response.data.knowledge_graph || null
+    });
+    
+  } catch (error) {
+    console.error('Error identifying watch:', error.message);
+    return res.status(500).json({ 
+      error: 'Failed to identify watch',
+      details: error.message
+    });
+  }
+});
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
 });
