@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Your SerpAPI key - you'll need to replace this with your actual key
+// Your SerpAPI key - replace with your actual key when deploying
 const SERPAPI_KEY = '1d6816078f96f61fd7d5d3847974dbcf1d5aafc074eaddf74ad10654a8179850';
 
 // Middleware
@@ -40,7 +40,7 @@ app.post('/identify', async (req, res) => {
     // Make request to SerpAPI
     const response = await axios.post('https://serpapi.com/search', {
       engine: 'google_lens',
-      api_key: 1d6816078f96f61fd7d5d3847974dbcf1d5aafc074eaddf74ad10654a8179850,
+      api_key: SERPAPI_KEY,
       image_data: base64Image
     });
     
