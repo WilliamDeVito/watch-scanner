@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Identifier</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        .btn {
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #166fe5;
+        }
+        .btn-secondary {
+            background-color: #e4e6eb;
+            color: #1c1e21;
+        }
+        .btn-secondary:hover {
+            background-color: #d8dbdf;
+        }
+        #file-upload-input {
+            display: none;
+        }
+        .camera-view, .result-view {
+            margin-top: 1.5rem;
+        }
+        #video, #photo-preview {
+            width: 100%;
+            height: auto;
+            border-radius: 6px;
+            background-color: #000;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #1877f2;
+            animation: spin 1s ease infinite;
+            margin: 2rem auto;
+            display: none; /* Hidden by default */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #result-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-top: 1rem;
+            min-height: 50px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Identify a Watch</h1>
+
+        <!-- === Main Buttons === -->
+        <div class="button-group" id="main-buttons">
+            <button class="btn" id="start-camera-btn">Use Camera</button>
+            <label for="file-upload-input" class="btn btn-secondary">Upload Photo</label>
+            <input type="file" id="file-upload-input" accept="image/*">
+        </div>
+
+        <!-- === Camera View === -->
+        <div class="camera-view" id="camera-view" style="display: none;">
+            <video id="video" playsinline></video>
+            <div class="button-group" style="margin-top: 1rem;">
+                <button class="btn" id="snap-photo-btn">Snap Photo</button>
+                <button class="btn btn-secondary" id="cancel-camera-btn">Cancel</button>
+            </div>
+        </div>
+        
+        <!-- === Preview and Result View === -->
+        <div class="result-view" id="result-view" style="display: none;">
+             <img id="photo-preview" src="" alt="Captured photo">
+             <div id="loader" class="spinner"></div>
+             <div id="result-text"></div>
+             <button class="btn" id="reset-btn" style="margin-top: 1rem;">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const mainButtons = document.getElementById('main-buttons');
+        const startCameraBtn = document.getElementById('start-camera-btn');
+        const fileUploadInput = document.getElementById('file-upload-input');
+        
+        const cameraView = document.getElementById('camera-view');
+        const video = document.getElementById('video');
+        const snapPhotoBtn = document.getElementById('snap-photo-btn');
+        const cancelCameraBtn = document.getElementById('cancel-camera-btn');
+        
+        const resultView = document.getElementById('result-view');
+        const photoPreview = document.getElementById('photo-preview');
+        const loader = document.getElementById('loader');
+        const resultText = document.getElementById('result-text');
+        const resetBtn = document.getElementById('reset-btn');
+
+        let stream;
+
+        // === Event Listeners ===
+
+        startCameraBtn.addEventListener('click', async () => {
+            mainButtons.style.display = 'none';
+            cameraView.style.display = 'block';
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                video.srcObject = stream;
+                video.play();
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                alert("Could not access the camera. Please ensure you have given permission.");
+                resetUI();
+            }
+        });
+
+        cancelCameraBtn.addEventListener('click', () => {
+            stopCamera();
+            resetUI();
+        });
+
+        snapPhotoBtn.addEventListener('click', () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            stopCamera();
+            cameraView.style.display = 'none';
+            
+            processImage(canvas);
+        });
+
+        fileUploadInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        // Resize image for faster upload and processing
+                        const MAX_WIDTH = 1024;
+                        const scale = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scale;
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        processImage(canvas);
+                    }
+                    img.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        resetBtn.addEventListener('click', resetUI);
+
+        // === Core Functions ===
+
+        function processImage(canvas) {
+            mainButtons.style.display = 'none';
+            resultView.style.display = 'block';
+            photoPreview.src = canvas.toDataURL('image/jpeg');
+            
+            // Convert canvas to a binary Blob and send to server
+            canvas.toBlob(blob => {
+                sendImageToServer(blob);
+            }, 'image/jpeg', 0.9); // Use JPEG for smaller file size
+        }
+
+        async function sendImageToServer(blob) {
+            loader.style.display = 'block';
+            resultText.textContent = 'Identifying...';
+
+            const formData = new FormData();
+            formData.append('watchImage', blob, 'watch.jpg');
+
+            try {
+                // This URL points to our backend endpoint. Since the frontend and backend
+                // are on the same server, we can use a relative path.
+                const response = await fetch('/identify-watch', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                // Display results based on the backend's response
+                if (data.success && data.match) {
+                    resultText.innerHTML = `Identified: <br>${data.match.name}`;
+                } else {
+                    resultText.textContent = data.message || 'Could not identify the watch.';
+                }
+
+            } catch (error) {
+                console.error('Error identifying watch:', error);
+                resultText.textContent = 'An error occurred. Please try again.';
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function resetUI() {
+            stopCamera();
+            mainButtons.style.display = 'flex';
+            cameraView.style.display = 'none';
+            resultView.style.display = 'none';
+            resultText.textContent = '';
+            fileUploadInput.value = ''; // Reset file input
+        }
+    </script>
+
+</body>
+</html>
